@@ -307,17 +307,19 @@ pub async fn recover(
         ));
     }
 
-    // Check recovery code
-    if let Some(ref stored_code) = user.totp_recover {
-        if !ct_eq(stored_code, &data.recovery_code) {
-            return Err(AppError::BadRequest(
-                "Recovery code is incorrect".to_string(),
-            ));
-        }
-    } else {
-        return Err(AppError::BadRequest(
-            "Recovery code is incorrect".to_string(),
-        ));
+    // Check recovery code (case-insensitive)
+    let is_valid = user.totp_recover.as_ref().map_or(false, |stored_code| {
+        ct_eq(&stored_code.to_uppercase(), &data.recovery_code.to_uppercase())
+    });
+    
+    if !is_valid {
+        return Err(AppError::TwoFactorRequired(serde_json::json!({
+            "error": "invalid_grant",
+            "error_description": "Recovery code is incorrect. Try again.",
+            "MasterPasswordPolicy": {
+                "Object": "masterPasswordPolicy"
+            }
+        })));
     }
 
     // Delete all 2FA methods

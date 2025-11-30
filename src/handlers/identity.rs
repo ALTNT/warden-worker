@@ -1,7 +1,7 @@
 use axum::{extract::State, Form, Json};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 use worker::{query, Env};
@@ -15,6 +15,30 @@ use crate::{
     models::user::User,
 };
 
+/// Deserialize an Option<i32> that may have trailing/leading whitespace.
+/// This handles Android clients that send "0 " instead of "0".
+fn deserialize_trimmed_i32<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(s) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                trimmed
+                    .parse::<i32>()
+                    .map(Some)
+                    .map_err(|_| D::Error::custom(format!("invalid integer: {}", s)))
+            }
+        }
+        None => Ok(None),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TokenRequest {
     grant_type: String,
@@ -24,9 +48,9 @@ pub struct TokenRequest {
     // 2FA fields
     #[serde(rename = "twoFactorToken")]
     two_factor_token: Option<String>,
-    #[serde(rename = "twoFactorProvider")]
+    #[serde(rename = "twoFactorProvider", default, deserialize_with = "deserialize_trimmed_i32")]
     two_factor_provider: Option<i32>,
-    #[serde(rename = "twoFactorRemember")]
+    #[serde(rename = "twoFactorRemember", default, deserialize_with = "deserialize_trimmed_i32")]
     two_factor_remember: Option<i32>,
     #[serde(rename = "deviceIdentifier")]
     device_identifier: Option<String>,
@@ -264,7 +288,7 @@ pub async fn token(
                     Some(TwoFactorType::RecoveryCode) => {
                         // Check recovery code
                         if let Some(ref stored_code) = user.totp_recover {
-                            if !ct_eq(stored_code, twofactor_code) {
+                            if !ct_eq(&stored_code.to_uppercase(), &twofactor_code.to_uppercase()) {
                                 return Err(AppError::BadRequest("Recovery code is incorrect".to_string()));
                             }
                             
