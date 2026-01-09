@@ -113,6 +113,16 @@ jobs:
                   if [ ${#AWS_ACCESS_KEY_ID} -lt 16 ]; then
                      echo "⚠️ WARNING: AWS_ACCESS_KEY_ID looks too short (${#AWS_ACCESS_KEY_ID} chars)."
                   fi
+              
+            - name: Verify S3 Connection (Python)
+              env:
+                  AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+                  AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+                  AWS_DEFAULT_REGION: ${{ secrets.S3_REGION }}
+                  S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+              run: |
+                  pip install boto3
+                  python scripts/verify_s3_connection.py
 
             - name: Upload to S3
               env:
